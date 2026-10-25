@@ -6,7 +6,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 
 import { connectDB } from './config/database';
-import { getRedisClient, closeRedis } from './config/redis';
+import { getRedisClient, closeRedis, ensureLocalRedisRunning } from './config/redis';
 import { runMigrations } from './migrations/run';
 import { startEmailWorker, stopEmailWorker } from './workers/emailWorker';
 import { getEmailQueue } from './queues/emailQueue';
@@ -15,6 +15,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { setupBullBoard } from './config/bullBoard';
 import { initElasticsearch } from './config/elasticsearch';
 import { syncAllEmailsToElasticsearch } from './services/elasticsearch.service';
+import { reconcileScheduledEmails } from './services/email.service';
 
 dotenv.config();
 
@@ -50,6 +51,14 @@ app.use('/api', apiLimiter);
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
+  let redisStatus = 'offline';
+  try {
+    const client = getRedisClient();
+    redisStatus = client.status;
+  } catch {
+    redisStatus = 'error';
+  }
+
   res.json({
     status: 'ok',
     service: 'Outbox Email Scheduler',
@@ -57,6 +66,13 @@ app.get('/health', (_req, res) => {
     timestamp: new Date().toISOString(),
     uptime: Math.round(process.uptime()),
     environment: process.env.NODE_ENV || 'development',
+    redis: {
+      status: redisStatus,
+      isExternal: !!process.env.REDIS_URL,
+    },
+    database: {
+      configured: !!process.env.DATABASE_URL,
+    },
   });
 });
 
@@ -78,6 +94,9 @@ app.use(errorHandler);
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 async function bootstrap(): Promise<void> {
   try {
+    // 0. Ensure local Redis daemon is running if no external Redis configured
+    ensureLocalRedisRunning();
+
     // 1. Connect to PostgreSQL
     await connectDB();
 
@@ -99,7 +118,10 @@ async function bootstrap(): Promise<void> {
     // 6. Start the worker with concurrency & throttling
     startEmailWorker();
 
-    // 7. Start HTTP server
+    // 7. Reconcile any pending scheduled emails (survives restarts & crashes)
+    await reconcileScheduledEmails();
+
+    // 8. Start HTTP server
     const server = app.listen(PORT, () => {
       console.log(`\n🚀  Outbox backend running on http://localhost:${PORT}`);
       console.log(`📋  Health:             http://localhost:${PORT}/health`);

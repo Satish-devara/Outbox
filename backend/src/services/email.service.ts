@@ -128,3 +128,51 @@ export async function cancelEmail(id: string): Promise<Email | null> {
 
   return updated;
 }
+
+/**
+ * Recovers and re-enqueues any emails in 'scheduled' status on server startup.
+ * Ensures persistence and guarantees zero job loss even after unexpected server restarts or crashes.
+ */
+export async function reconcileScheduledEmails(): Promise<void> {
+  try {
+    const pending = await query<Email>(
+      `SELECT * FROM emails WHERE status = 'scheduled' ORDER BY scheduled_at ASC`
+    );
+
+    if (pending.length === 0) {
+      console.log('✅  No pending scheduled emails to reconcile');
+      return;
+    }
+
+    console.log(`🔄  Reconciling ${pending.length} scheduled email(s)…`);
+
+    for (const email of pending) {
+      try {
+        const scheduledTime = new Date(email.scheduled_at);
+        const jobId = await scheduleEmailJob(
+          email.id,
+          {
+            emailId: email.id,
+            to: email.to_address,
+            from: email.from_address,
+            subject: email.subject,
+            body: email.body,
+          },
+          scheduledTime
+        );
+
+        if (email.job_id !== jobId) {
+          await query(`UPDATE emails SET job_id = $1 WHERE id = $2`, [jobId, email.id]);
+        }
+        console.log(`  ↳ Re-queued email ${email.id} (target: ${scheduledTime.toISOString()})`);
+      } catch (err) {
+        console.error(`❌  Failed to re-enqueue email ${email.id}:`, err);
+      }
+    }
+
+    console.log(`✅  Reconciled ${pending.length} scheduled email(s) successfully`);
+  } catch (err) {
+    console.error('❌  Error during email reconciliation:', err);
+  }
+}
+

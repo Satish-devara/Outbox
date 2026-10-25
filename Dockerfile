@@ -22,13 +22,21 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=10000
 
-# Install production dependencies only
+# Install Redis server and client inside container
+RUN apk add --no-cache redis
+
+# Copy package files and install production dependencies
 COPY backend/package*.json ./
 RUN npm ci --omit=dev
 
 # Copy compiled JavaScript from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Copy entrypoint script to launch Redis if needed
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+
 EXPOSE 10000
 
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["npm", "start"]
