@@ -1,6 +1,19 @@
 export default function Header() {
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-  const queueDashboardUrl = apiUrl.replace(/\/api\/?$/, '') + '/admin/queues';
+  const getQueueDashboardUrl = (): string => {
+    if (import.meta.env.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') + '/admin/queues';
+    }
+    if (
+      typeof window !== 'undefined' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1'
+    ) {
+      return 'https://outbox-2cqf.onrender.com/admin/queues';
+    }
+    return 'http://localhost:3001/admin/queues';
+  };
+
+  const queueDashboardUrl = getQueueDashboardUrl();
 
   return (
     <header className="border-b border-white/5 bg-[#0e0e15]/80 backdrop-blur-xl sticky top-0 z-50">

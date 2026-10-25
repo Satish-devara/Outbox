@@ -1,6 +1,20 @@
 import { Email, CreateEmailPayload, QueueStats, ApiResponse } from '../types/email';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const getBaseUrl = (): string => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  if (
+    typeof window !== 'undefined' &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1'
+  ) {
+    return 'https://outbox-2cqf.onrender.com/api';
+  }
+  return 'http://localhost:3001/api';
+};
+
+const BASE_URL = getBaseUrl();
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<ApiResponse<T>> {
   const res = await fetch(`${BASE_URL}${path}`, {

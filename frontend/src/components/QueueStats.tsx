@@ -60,7 +60,7 @@ export default function QueueStats() {
   if (error) {
     return (
       <div className="glass rounded-xl p-4 border border-red-500/20 text-red-400 text-sm flex items-center gap-2">
-        <span>⚠️</span> {error} — make sure the backend is running on port 3001
+        <span>⚠️</span> {error} — backend is waking up or connecting
       </div>
     );
   }
