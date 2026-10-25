@@ -1,5 +1,5 @@
 import { Queue } from 'bullmq';
-import { getRedisClient } from '../config/redis';
+import { createRedisClient } from '../config/redis';
 import { EmailJobData } from '../models/email.model';
 
 export const QUEUE_NAME = 'email-scheduler';
@@ -13,7 +13,7 @@ let emailQueue: Queue<EmailJobData> | null = null;
 export function getEmailQueue(): Queue<EmailJobData> {
   if (!emailQueue) {
     emailQueue = new Queue<EmailJobData>(QUEUE_NAME, {
-      connection: getRedisClient(),
+      connection: createRedisClient(),
       defaultJobOptions: {
         attempts: 3,
         backoff: {

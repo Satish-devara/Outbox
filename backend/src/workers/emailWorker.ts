@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { getRedisClient } from '../config/redis';
+import { createRedisClient } from '../config/redis';
 import { QUEUE_NAME } from '../queues/emailQueue';
 import { sendEmail } from '../services/smtp.service';
 import { query } from '../config/database';
@@ -91,7 +91,7 @@ export function startEmailWorker(): void {
   if (worker) return;
 
   worker = new Worker<EmailJobData>(QUEUE_NAME, processEmailJob, {
-    connection: getRedisClient(),
+    connection: createRedisClient(),
     concurrency: WORKER_CONCURRENCY,
     limiter: {
       max: 10,
