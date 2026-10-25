@@ -74,16 +74,32 @@ export async function cancelEmailJob(jobId: string): Promise<boolean> {
 }
 
 /**
- * Returns queue stats for monitoring.
+ * Returns queue stats for monitoring with timeout fallback.
  */
 export async function getQueueStats() {
   const queue = getEmailQueue();
-  const [waiting, delayed, active, completed, failed] = await Promise.all([
-    queue.getWaitingCount(),
-    queue.getDelayedCount(),
-    queue.getActiveCount(),
-    queue.getCompletedCount(),
-    queue.getFailedCount(),
-  ]);
-  return { waiting, delayed, active, completed, failed };
+
+  try {
+    const statsPromise = Promise.all([
+      queue.getWaitingCount(),
+      queue.getDelayedCount(),
+      queue.getActiveCount(),
+      queue.getCompletedCount(),
+      queue.getFailedCount(),
+    ]);
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Queue stats query timed out')), 2500)
+    );
+
+    const [waiting, delayed, active, completed, failed] = await Promise.race([
+      statsPromise,
+      timeoutPromise,
+    ]);
+
+    return { waiting, delayed, active, completed, failed };
+  } catch (err) {
+    console.warn('⚠️  Could not fetch live queue counts:', (err as Error).message);
+    return { waiting: 0, delayed: 0, active: 0, completed: 0, failed: 0 };
+  }
 }
