@@ -20,6 +20,7 @@ import { reconcileScheduledEmails } from './services/email.service';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // Enable proxy support for Render load balancers
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 // ─── Security Middleware ──────────────────────────────────────────────────────
@@ -37,7 +38,8 @@ app.use(cors({
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300,
+  max: 10000, // Generous limit for high dashboard throughput
+  skip: (req) => req.path.startsWith('/queue'), // Never block live queue polling
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: 'Too many requests, please try again later.' },

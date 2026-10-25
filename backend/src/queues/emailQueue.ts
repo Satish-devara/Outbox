@@ -48,6 +48,17 @@ export async function scheduleEmailJob(
   const now = Date.now();
   const delay = Math.max(0, scheduledAt.getTime() - now);
 
+  // If a previous job with this ID already exists, remove it so fresh options take effect
+  try {
+    const existing = await queue.getJob(emailId);
+    if (existing) {
+      await existing.remove();
+      console.log(`🧹  Removed existing BullMQ job ${emailId} for clean re-queue`);
+    }
+  } catch {
+    // Non-fatal if job not found
+  }
+
   const job = await queue.add(`send-email-${emailId}`, data, {
     delay,
     jobId: emailId, // Use emailId as jobId for idempotency
