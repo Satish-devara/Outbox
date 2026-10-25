@@ -12,6 +12,9 @@ import { startEmailWorker, stopEmailWorker } from './workers/emailWorker';
 import { getEmailQueue } from './queues/emailQueue';
 import emailRoutes from './routes/email.routes';
 import { errorHandler } from './middleware/errorHandler';
+import { setupBullBoard } from './config/bullBoard';
+import { initElasticsearch } from './config/elasticsearch';
+import { syncAllEmailsToElasticsearch } from './services/elasticsearch.service';
 
 dotenv.config();
 
@@ -19,7 +22,10 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 // ─── Security Middleware ──────────────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false, // Allows Bull Board dashboard assets and preview embeds
+}));
+
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
@@ -29,23 +35,15 @@ app.use(cors({
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: 'Too many requests, please try again later.' },
 });
 
-const scheduleLimit = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 30,             // max 30 schedule requests per minute
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many schedule requests. Slow down.' },
-});
-
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(morgan('dev'));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/api', apiLimiter);
 
@@ -60,6 +58,10 @@ app.get('/health', (_req, res) => {
     environment: process.env.NODE_ENV || 'development',
   });
 });
+
+// ─── BullMQ Live Dashboard ────────────────────────────────────────────────────
+// Exposes the live BullMQ dashboard for real-time queue visibility at /admin/queues
+app.use('/admin/queues', setupBullBoard());
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api', emailRoutes);
@@ -87,14 +89,22 @@ async function bootstrap(): Promise<void> {
     // 4. Initialise BullMQ queue
     getEmailQueue();
 
-    // 5. Start the worker — picks up any persisted delayed jobs from Redis
+    // 5. Connect and initialize Elasticsearch index
+    const esReady = await initElasticsearch();
+    if (esReady) {
+      await syncAllEmailsToElasticsearch();
+    }
+
+    // 6. Start the worker with concurrency & throttling
     startEmailWorker();
 
-    // 6. Start HTTP server
+    // 7. Start HTTP server
     const server = app.listen(PORT, () => {
       console.log(`\n🚀  Outbox backend running on http://localhost:${PORT}`);
-      console.log(`📋  Health: http://localhost:${PORT}/health`);
-      console.log(`📬  API:    http://localhost:${PORT}/api/emails\n`);
+      console.log(`📋  Health:             http://localhost:${PORT}/health`);
+      console.log(`📊  BullMQ Dashboard:   http://localhost:${PORT}/admin/queues`);
+      console.log(`📬  API:                http://localhost:${PORT}/api/emails`);
+      console.log(`🔍  Elasticsearch API:  http://localhost:${PORT}/api/emails/search?q=...\n`);
     });
 
     // ─── Graceful shutdown ────────────────────────────────────────────────────

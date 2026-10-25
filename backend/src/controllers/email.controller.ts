@@ -6,6 +6,7 @@ import {
   getEmailById,
   cancelEmail,
 } from '../services/email.service';
+import { searchEmailsIndex } from '../services/elasticsearch.service';
 import { getQueueStats } from '../queues/emailQueue';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -21,6 +22,7 @@ function isValidUUID(id: string): boolean {
 
 const scheduleEmailSchema = z.object({
   to: z.string().email('Invalid recipient email address'),
+  from: z.string().min(3).max(255).optional(), // Multiple senders support
   subject: z.string().min(1, 'Subject is required').max(500),
   body: z.string().min(1, 'Body is required').max(100_000),
   scheduledAt: z.string().refine((v) => !isNaN(Date.parse(v)), {
@@ -67,6 +69,37 @@ export async function scheduleEmail(
 }
 
 /**
+ * GET /api/emails/search
+ * Full-text search emails across subject, body, to_address, and from_address via Elasticsearch
+ */
+export async function searchEmails(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const q = String(req.query.q || '');
+    const status = req.query.status ? String(req.query.status) : undefined;
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '50'), 10)));
+
+    const result = await searchEmailsIndex(q, status, limit);
+
+    res.json({
+      success: true,
+      data: result.emails,
+      meta: {
+        total: result.total,
+        query: q,
+        status,
+        limit,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * GET /api/emails
  * List all emails (optionally filtered by ?status=scheduled|sent|failed|cancelled)
  * Supports ?page=1&limit=20 pagination
@@ -84,8 +117,8 @@ export async function listEmails(
         ? status
         : undefined;
 
-    const pageNum = Math.max(1, parseInt(String(page || '1')));
-    const limitNum = Math.min(100, Math.max(1, parseInt(String(limit || '50'))));
+    const pageNum = Math.max(1, parseInt(String(page || '1'), 10));
+    const limitNum = Math.min(100, Math.max(1, parseInt(String(limit || '50'), 10)));
     const offset = (pageNum - 1) * limitNum;
 
     const { emails, total } = await getEmails(statusFilter, limitNum, offset);

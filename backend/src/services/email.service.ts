@@ -1,9 +1,10 @@
 import { query } from '../config/database';
 import { scheduleEmailJob, cancelEmailJob } from '../queues/emailQueue';
 import { Email, CreateEmailDto } from '../models/email.model';
+import { indexEmailDocument } from './elasticsearch.service';
 
 /**
- * Creates a new scheduled email record in the DB and enqueues a BullMQ job.
+ * Creates a new scheduled email record in the DB, indexes into Elasticsearch, and enqueues a BullMQ job.
  */
 export async function createScheduledEmail(dto: CreateEmailDto): Promise<Email> {
   const scheduledAt = new Date(dto.scheduledAt);
@@ -12,12 +13,16 @@ export async function createScheduledEmail(dto: CreateEmailDto): Promise<Email> 
     throw new Error('Invalid scheduledAt timestamp');
   }
 
-  // Insert email record
+  const fromAddress = dto.from && dto.from.trim().length > 0
+    ? dto.from.trim()
+    : 'scheduler@outbox.dev';
+
+  // Insert email record into PostgreSQL
   const rows = await query<Email>(
-    `INSERT INTO emails (to_address, subject, body, scheduled_at, status)
-     VALUES ($1, $2, $3, $4, 'scheduled')
+    `INSERT INTO emails (to_address, from_address, subject, body, scheduled_at, status)
+     VALUES ($1, $2, $3, $4, $5, 'scheduled')
      RETURNING *`,
-    [dto.to, dto.subject, dto.body, scheduledAt]
+    [dto.to, fromAddress, dto.subject, dto.body, scheduledAt]
   );
 
   const email = rows[0];
@@ -25,7 +30,13 @@ export async function createScheduledEmail(dto: CreateEmailDto): Promise<Email> 
   // Enqueue BullMQ job (persisted in Redis)
   const jobId = await scheduleEmailJob(
     email.id,
-    { emailId: email.id, to: dto.to, subject: dto.subject, body: dto.body },
+    {
+      emailId: email.id,
+      to: dto.to,
+      from: fromAddress,
+      subject: dto.subject,
+      body: dto.body,
+    },
     scheduledAt
   );
 
@@ -35,7 +46,12 @@ export async function createScheduledEmail(dto: CreateEmailDto): Promise<Email> 
     [jobId, email.id]
   );
 
-  return { ...email, job_id: jobId };
+  const finalEmail = { ...email, job_id: jobId };
+
+  // Index in Elasticsearch
+  await indexEmailDocument(finalEmail);
+
+  return finalEmail;
 }
 
 /**
@@ -46,12 +62,10 @@ export async function getEmails(
   limit = 50,
   offset = 0
 ): Promise<{ emails: Email[]; total: number }> {
-  const whereClause = status ? `WHERE status = $1` : '';
   const params = status
     ? [status, limit, offset]
     : [limit, offset];
 
-  const countParam = status ? '$1' : '';
   const countQuery = status
     ? `SELECT COUNT(*) AS total FROM emails WHERE status = $1`
     : `SELECT COUNT(*) AS total FROM emails`;
@@ -84,7 +98,7 @@ export async function getEmailById(id: string): Promise<Email | null> {
 }
 
 /**
- * Cancels a scheduled email — removes it from the BullMQ queue and marks as cancelled.
+ * Cancels a scheduled email — removes it from BullMQ, updates DB and Elasticsearch.
  */
 export async function cancelEmail(id: string): Promise<Email | null> {
   const email = await getEmailById(id);
@@ -107,5 +121,10 @@ export async function cancelEmail(id: string): Promise<Email | null> {
     [id]
   );
 
-  return rows[0] ?? null;
+  const updated = rows[0] ?? null;
+  if (updated) {
+    await indexEmailDocument(updated);
+  }
+
+  return updated;
 }

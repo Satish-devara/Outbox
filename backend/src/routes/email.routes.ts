@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   scheduleEmail,
+  searchEmails,
   listEmails,
   getEmail,
   deleteEmail,
@@ -8,6 +9,9 @@ import {
 } from '../controllers/email.controller';
 
 const router = Router();
+
+// Elasticsearch Full-text Search
+router.get('/emails/search', searchEmails);
 
 // Email CRUD
 router.post('/emails', scheduleEmail);

@@ -1,14 +1,18 @@
 export function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleString('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  try {
+    return new Date(dateStr).toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return dateStr;
+  }
 }
 
 export function getStatusColor(status: string): string {
@@ -22,7 +26,7 @@ export function getStatusColor(status: string): string {
     case 'cancelled':
       return 'bg-gray-500/20 text-gray-400 border border-gray-500/30';
     default:
-      return 'bg-gray-500/20 text-gray-400';
+      return 'bg-gray-500/20 text-gray-400 border border-gray-500/30';
   }
 }
 

@@ -1,0 +1,37 @@
+services:
+  # Backend API & BullMQ Worker Web Service
+  - type: web
+    name: outbox-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: outbox-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: outbox-redis
+          property: connectionString
+      - key: WORKER_CONCURRENCY
+        value: "5"
+      - key: MIN_SEND_DELAY_MS
+        value: "1000"
+
+  # Managed Redis instance for BullMQ
+  - type: redis
+    name: outbox-redis
+    ipAllowList: []
+    plan: free
+
+databases:
+  # Managed PostgreSQL database
+  - name: outbox-db
+    plan: free

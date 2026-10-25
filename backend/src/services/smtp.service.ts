@@ -35,17 +35,21 @@ async function getTransporter(): Promise<nodemailer.Transporter> {
 
 /**
  * Sends an email via Ethereal fake SMTP.
+ * Supports multiple senders via the optional `from` parameter.
  * Returns message ID and the Ethereal preview URL.
  */
 export async function sendEmail(
   to: string,
   subject: string,
-  body: string
+  body: string,
+  from = '"Outbox Scheduler" <scheduler@outbox.dev>'
 ): Promise<EtherealResult> {
   const transport = await getTransporter();
 
+  const sender = from.includes('<') ? from : `"${from}" <${from}>`;
+
   const info = await transport.sendMail({
-    from: '"Outbox Scheduler" <scheduler@outbox.dev>',
+    from: sender,
     to,
     subject,
     html: body,
@@ -53,7 +57,7 @@ export async function sendEmail(
   });
 
   const previewUrl = nodemailer.getTestMessageUrl(info) as string;
-  console.log(`📬  Email sent: ${info.messageId} → ${previewUrl}`);
+  console.log(`📬  Email sent from ${sender} to ${to}: ${info.messageId} → ${previewUrl}`);
 
   return {
     messageId: info.messageId,

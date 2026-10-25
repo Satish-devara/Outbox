@@ -1,12 +1,14 @@
 # Outbox — Production-Grade Email Scheduler
 
-> A ReachInbox internship assignment — built with BullMQ + Redis + PostgreSQL + Next.js
+> A ReachInbox internship assignment — built with BullMQ + Redis + PostgreSQL + Elasticsearch + React.js
 
 ![Status](https://img.shields.io/badge/status-running-brightgreen)
 ![Backend](https://img.shields.io/badge/backend-Express%20%2B%20TypeScript-blue)
 ![Queue](https://img.shields.io/badge/queue-BullMQ%20%2B%20Redis-red)
 ![DB](https://img.shields.io/badge/db-PostgreSQL-blue)
-![Frontend](https://img.shields.io/badge/frontend-Next.js%20%2B%20Tailwind-black)
+![Search](https://img.shields.io/badge/search-Elasticsearch%208.11-yellow)
+![Dashboard](https://img.shields.io/badge/dashboard-Bull%20Board%20UI-orange)
+![Frontend](https://img.shields.io/badge/frontend-React.js%20%2B%20Vite%20%2B%20Tailwind-blue)
 
 ---
 
@@ -15,22 +17,24 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Client Browser                           │
-│                    Next.js Dashboard (port 3000)                │
+│                    React.js Dashboard (port 3000)               │
+│               [Live BullMQ Dashboard @ port 3001/admin/queues]  │
 └─────────────────────────┬───────────────────────────────────────┘
                           │ REST API
 ┌─────────────────────────▼───────────────────────────────────────┐
 │                    Express.js Backend (port 3001)               │
 │                                                                 │
 │  POST /api/emails  ──▶  EmailService  ──▶  PostgreSQL           │
+│                              │        ──▶  Elasticsearch Index  │
 │                              │                                  │
 │                              └──▶  BullMQ Queue                 │
 │                                       │                         │
 │                              Redis (persistent)                 │
 │                                       │                         │
 │                         BullMQ Worker (concurrency 5)           │
-│                              │                                  │
-│                              └──▶  Ethereal SMTP (fake send)    │
-│                              └──▶  Update DB (status=sent)      │
+│                              │ (provider throttling delay)      │
+│                              └──▶  Ethereal SMTP (multi-sender) │
+│                              └──▶  Update DB & Elasticsearch    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -77,22 +81,22 @@ Outbox/
 │   ├── tsconfig.json
 │   └── .env.example
 ├── frontend/
-│   ├── app/
-│   │   ├── layout.tsx
-│   │   ├── globals.css
-│   │   └── page.tsx             # Dashboard (tab-based)
-│   ├── components/
-│   │   ├── Header.tsx
-│   │   ├── QueueStats.tsx       # Live queue metrics
-│   │   ├── ScheduleForm.tsx     # Schedule new email
-│   │   └── EmailTable.tsx       # View scheduled / sent
-│   ├── lib/
-│   │   ├── api.ts               # Typed API client
-│   │   └── utils.ts             # Formatting helpers
-│   └── types/
-│       └── email.ts             # Shared types
-├── scripts/
-│   └── startup_proof.py         # Python proof: started Oct 24, 9:30 AM IST
+│   ├── index.html               # React mount root
+│   ├── vite.config.ts           # Vite + Tailwind + proxy config
+│   ├── src/
+│   │   ├── App.tsx              # Main React dashboard & tabs
+│   │   ├── main.tsx             # React DOM entrypoint
+│   │   ├── index.css            # Tailwind CSS v4 styling & animations
+│   │   ├── components/
+│   │   │   ├── Header.tsx       # Top bar & live indicators
+│   │   │   ├── QueueStats.tsx   # Live BullMQ metrics
+│   │   │   ├── ScheduleForm.tsx # Schedule email with presets
+│   │   │   └── EmailTable.tsx   # Email records, search & details
+│   │   ├── lib/
+│   │   │   ├── api.ts           # Typed API client
+│   │   │   └── utils.ts         # Formatting & badge helpers
+│   │   └── types/
+│   │       └── email.ts         # Shared TypeScript interfaces
 ├── docker-compose.yml
 └── README.md
 ```
@@ -105,7 +109,6 @@ Outbox/
 
 - Node.js 18+
 - Docker + Docker Compose
-- Python 3.8+ (for startup proof script)
 
 ### 1. Clone the repo
 
@@ -114,7 +117,7 @@ git clone https://github.com/Satish-devara/Outbox.git
 cd Outbox
 ```
 
-### 2. Start infrastructure (Redis + PostgreSQL)
+### 2. Start infrastructure (Redis + PostgreSQL + Elasticsearch)
 
 ```bash
 docker-compose up -d
@@ -132,9 +135,9 @@ npm run dev
 The backend will:
 1. Connect to PostgreSQL
 2. Run idempotent migrations (creates `emails` table)
-3. Connect to Redis
-4. Register the BullMQ queue
-5. Start the email worker
+3. Connect to Redis & register BullMQ queue
+4. Connect to Elasticsearch & index schema
+5. Mount live BullMQ dashboard at `/admin/queues`
 6. Start HTTP server on port `3001`
 
 ### 4. Start the frontend
@@ -146,14 +149,6 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
-
-### 5. Run the startup proof script
-
-```bash
-cd scripts
-pip install pytz
-python startup_proof.py
-```
 
 ---
 
@@ -288,33 +283,21 @@ Ethereal creates a disposable SMTP test account. Every sent email gets a preview
 
 ---
 
-## ⏱ Startup Proof
-
-The `scripts/startup_proof.py` script demonstrates the service was running from **October 24, 2026 at 09:30 AM IST**. It:
-
-- Prints a full service startup log with timestamps from Oct 24 09:30 AM
-- Shows live uptime counter
-- Writes a JSON proof file (`startup_proof.json`)
-
-```bash
-cd scripts && python startup_proof.py
-```
-
----
-
 ## 🛠 Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Backend language | TypeScript |
+| Backend language | TypeScript (Node.js) |
 | HTTP framework | Express.js |
 | Queue | BullMQ |
-| Queue store | Redis (via ioredis) |
-| Database | PostgreSQL (via pg) |
+| Queue store | Redis 7 (via ioredis) |
+| Relational Database | PostgreSQL 15 (via pg) |
+| Search Engine | Elasticsearch 8.11 (via @elastic/elasticsearch) |
+| Live Dashboard | Bull Board (@bull-board/express) |
 | Validation | Zod |
 | SMTP | Ethereal Email (nodemailer) |
-| Frontend | Next.js 15 + React 19 |
-| Styling | Tailwind CSS |
+| Frontend | React.js 19 + Vite |
+| Styling | Tailwind CSS v4 |
 | Infra | Docker Compose |
 
 ---

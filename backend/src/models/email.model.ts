@@ -1,6 +1,7 @@
 export interface Email {
   id: string;
   to_address: string;
+  from_address: string;
   subject: string;
   body: string;
   scheduled_at: Date;
@@ -15,6 +16,7 @@ export interface Email {
 
 export interface CreateEmailDto {
   to: string;
+  from?: string; // multiple senders support
   subject: string;
   body: string;
   scheduledAt: string; // ISO 8601 string
@@ -23,6 +25,7 @@ export interface CreateEmailDto {
 export interface EmailJobData {
   emailId: string;
   to: string;
+  from?: string;
   subject: string;
   body: string;
 }

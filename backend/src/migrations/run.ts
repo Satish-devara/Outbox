@@ -4,6 +4,7 @@ const CREATE_EMAILS_TABLE = `
   CREATE TABLE IF NOT EXISTS emails (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     to_address    VARCHAR(255)  NOT NULL,
+    from_address  VARCHAR(255)  NOT NULL DEFAULT 'scheduler@outbox.dev',
     subject       VARCHAR(500)  NOT NULL,
     body          TEXT          NOT NULL,
     scheduled_at  TIMESTAMPTZ   NOT NULL,
@@ -16,9 +17,12 @@ const CREATE_EMAILS_TABLE = `
     updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
   );
 
+  ALTER TABLE emails ADD COLUMN IF NOT EXISTS from_address VARCHAR(255) NOT NULL DEFAULT 'scheduler@outbox.dev';
+
   CREATE INDEX IF NOT EXISTS idx_emails_status        ON emails(status);
   CREATE INDEX IF NOT EXISTS idx_emails_scheduled_at  ON emails(scheduled_at);
   CREATE INDEX IF NOT EXISTS idx_emails_job_id        ON emails(job_id);
+  CREATE INDEX IF NOT EXISTS idx_emails_from_address  ON emails(from_address);
 `;
 
 export async function runMigrations(): Promise<void> {

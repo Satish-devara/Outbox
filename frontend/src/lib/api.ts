@@ -1,6 +1,6 @@
-import { Email, CreateEmailPayload, QueueStats, ApiResponse } from '@/types/email';
+import { Email, CreateEmailPayload, QueueStats, ApiResponse } from '../types/email';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<ApiResponse<T>> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -26,6 +26,13 @@ export const api = {
     params.set('page', String(page));
     params.set('limit', String(limit));
     return fetchApi<Email[]>(`/emails?${params.toString()}`);
+  },
+
+  searchEmails: (queryStr: string, status?: string) => {
+    const params = new URLSearchParams();
+    params.set('q', queryStr);
+    if (status) params.set('status', status);
+    return fetchApi<Email[]>(`/emails/search?${params.toString()}`);
   },
 
   getEmail: (id: string) =>

@@ -11,6 +11,9 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
+    "@bull-board/api": "^9.10.5",
+    "@bull-board/express": "^9.10.5",
+    "@elastic/elasticsearch": "^9.5.1",
     "bullmq": "^5.4.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

@@ -1,6 +1,7 @@
 export interface Email {
   id: string;
   to_address: string;
+  from_address: string;
   subject: string;
   body: string;
   scheduled_at: string;
@@ -15,6 +16,7 @@ export interface Email {
 
 export interface CreateEmailPayload {
   to: string;
+  from?: string; // multiple senders support
   subject: string;
   body: string;
   scheduledAt: string;
@@ -33,6 +35,7 @@ export interface PaginationMeta {
   page: number;
   limit: number;
   pages: number;
+  query?: string;
 }
 
 export interface ApiResponse<T> {
