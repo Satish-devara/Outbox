@@ -1,4 +1,7 @@
 export default function Header() {
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  const queueDashboardUrl = apiUrl.replace(/\/api\/?$/, '') + '/admin/queues';
+
   return (
     <header className="border-b border-white/5 bg-[#0e0e15]/80 backdrop-blur-xl sticky top-0 z-50">
       <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -26,7 +29,7 @@ export default function Header() {
         {/* Live Status & BullMQ Dashboard Link */}
         <div className="flex items-center gap-3">
           <a
-            href="http://localhost:3001/admin/queues"
+            href={queueDashboardUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-xs font-semibold text-indigo-300 hover:text-white bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 hover:border-indigo-400/50 px-3 py-1.5 rounded-full transition-all shadow-sm"
