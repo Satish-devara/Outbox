@@ -91,10 +91,19 @@ app.use((_req, res) => {
 // ─── Error handler ────────────────────────────────────────────────────────────
 app.use(errorHandler);
 
-// ─── Bootstrap ────────────────────────────────────────────────────────────────
+// ─── Start HTTP server immediately on 0.0.0.0 so Render detects port binding in <10ms ───
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀  Outbox backend running on 0.0.0.0:${PORT}`);
+  console.log(`📋  Health:             http://0.0.0.0:${PORT}/health`);
+  console.log(`📊  BullMQ Dashboard:   http://0.0.0.0:${PORT}/admin/queues`);
+  console.log(`📬  API:                http://0.0.0.0:${PORT}/api/emails`);
+  console.log(`🔍  Elasticsearch API:  http://0.0.0.0:${PORT}/api/emails/search?q=...\n`);
+});
+
+// ─── Bootstrap background dependencies asynchronously ────────────────────────
 async function bootstrap(): Promise<void> {
   try {
-    // 0. Ensure local Redis daemon is running if no external Redis configured
+    // 0. Ensure local Redis daemon is running
     ensureLocalRedisRunning();
 
     // 1. Connect to PostgreSQL
@@ -120,34 +129,24 @@ async function bootstrap(): Promise<void> {
 
     // 7. Reconcile any pending scheduled emails (survives restarts & crashes)
     await reconcileScheduledEmails();
-
-    // 8. Start HTTP server
-    const server = app.listen(PORT, () => {
-      console.log(`\n🚀  Outbox backend running on http://localhost:${PORT}`);
-      console.log(`📋  Health:             http://localhost:${PORT}/health`);
-      console.log(`📊  BullMQ Dashboard:   http://localhost:${PORT}/admin/queues`);
-      console.log(`📬  API:                http://localhost:${PORT}/api/emails`);
-      console.log(`🔍  Elasticsearch API:  http://localhost:${PORT}/api/emails/search?q=...\n`);
-    });
-
-    // ─── Graceful shutdown ────────────────────────────────────────────────────
-    const shutdown = async (signal: string) => {
-      console.log(`\n⚡  Received ${signal} — shutting down gracefully…`);
-      server.close(async () => {
-        await stopEmailWorker();
-        await closeRedis();
-        console.log('👋  Shutdown complete');
-        process.exit(0);
-      });
-    };
-
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
-
   } catch (err) {
-    console.error('❌  Bootstrap failed:', err);
-    process.exit(1);
+    console.error('❌  Background bootstrap error:', err);
   }
 }
 
+// ─── Graceful shutdown ────────────────────────────────────────────────────────
+const shutdown = async (signal: string) => {
+  console.log(`\n⚡  Received ${signal} — shutting down gracefully…`);
+  server.close(async () => {
+    await stopEmailWorker();
+    await closeRedis();
+    console.log('👋  Shutdown complete');
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
 bootstrap();
+

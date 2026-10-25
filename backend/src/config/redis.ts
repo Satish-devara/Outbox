@@ -5,17 +5,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 /**
- * Ensures that if no external Redis is configured, or if pointing to localhost,
- * the container's local redis-server is active and listening.
+ * Ensures that the container's local redis-server is active and listening on 127.0.0.1:6379.
  */
 export function ensureLocalRedisRunning(): void {
-  const isLocal =
-    !process.env.REDIS_URL ||
-    process.env.REDIS_URL.includes('localhost') ||
-    process.env.REDIS_URL.includes('127.0.0.1');
-
-  if (!isLocal) return;
-
   try {
     execSync('redis-cli ping', { stdio: 'ignore', timeout: 1000 });
     console.log('✅  Local Redis server is active');
@@ -45,14 +37,22 @@ export function ensureLocalRedisRunning(): void {
 export function createRedisClient(): Redis {
   let client: Redis;
 
-  if (process.env.REDIS_URL) {
-    const isTls = process.env.REDIS_URL.startsWith('rediss://') || process.env.REDIS_TLS === 'true';
+  if (
+    process.env.REDIS_URL &&
+    !process.env.REDIS_URL.includes('127.0.0.1') &&
+    !process.env.REDIS_URL.includes('localhost')
+  ) {
+    const isTls =
+      process.env.REDIS_URL.startsWith('rediss://') || process.env.REDIS_TLS === 'true';
+
     client = new Redis(process.env.REDIS_URL, {
       maxRetriesPerRequest: null, // Required by BullMQ
-      connectTimeout: 10000,
+      connectTimeout: 15000,
       enableReadyCheck: false,
+      family: 4, // Force IPv4 to avoid NAT64 socket resets
+      keepAlive: 10000, // TCP keep-alive probe every 10s prevents idle timeout resets
       tls: isTls ? { rejectUnauthorized: false } : undefined,
-      retryStrategy: (times: number) => Math.min(times * 100, 3000),
+      retryStrategy: (times: number) => Math.min(times * 150, 3000),
     });
   } else {
     const options: RedisOptions = {
@@ -62,13 +62,23 @@ export function createRedisClient(): Redis {
       maxRetriesPerRequest: null, // Required by BullMQ
       connectTimeout: 10000,
       enableReadyCheck: false,
+      family: 4,
+      keepAlive: 10000,
       tls: process.env.REDIS_TLS === 'true' ? { rejectUnauthorized: false } : undefined,
       retryStrategy: (times: number) => Math.min(times * 100, 3000),
     };
     client = new Redis(options);
   }
 
-  client.on('error', (err) => console.error('❌  Redis error:', err.message));
+  // Gracefully handle transient connection errors (e.g. idle ECONNRESET auto-reconnects)
+  client.on('error', (err: any) => {
+    if (err?.code === 'ECONNRESET' || err?.message?.includes('ECONNRESET')) {
+      // Benign transient cloud Redis idle socket drop; IORedis auto-reconnects
+      return;
+    }
+    console.error('❌  Redis error:', err?.message || err);
+  });
+
   return client;
 }
 

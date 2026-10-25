@@ -107,7 +107,11 @@ export function startEmailWorker(): void {
     console.error(`💀  Job ${job?.id} failed after ${job?.attemptsMade} attempts:`, err.message);
   });
 
-  worker.on('error', (err) => {
+  worker.on('error', (err: any) => {
+    if (err?.code === 'ECONNRESET' || err?.message?.includes('ECONNRESET')) {
+      // Benign transient disconnect from idle cloud Redis socket; auto-reconnecting
+      return;
+    }
     console.error('Worker error:', err);
   });
 
