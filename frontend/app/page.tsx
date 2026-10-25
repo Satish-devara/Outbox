@@ -6,7 +6,7 @@ import EmailTable from '@/components/EmailTable';
 import QueueStats from '@/components/QueueStats';
 import Header from '@/components/Header';
 
-type Tab = 'schedule' | 'scheduled' | 'sent';
+type Tab = 'schedule' | 'all' | 'scheduled' | 'sent' | 'failed';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('schedule');
@@ -18,9 +18,11 @@ export default function Home() {
   };
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: 'schedule', label: 'Schedule Email', icon: '✉️' },
+    { id: 'schedule', label: 'Schedule', icon: '✉️' },
+    { id: 'all',       label: 'All',       icon: '📋' },
     { id: 'scheduled', label: 'Scheduled', icon: '⏰' },
-    { id: 'sent', label: 'Sent', icon: '✅' },
+    { id: 'sent',      label: 'Sent',      icon: '✅' },
+    { id: 'failed',    label: 'Failed',    icon: '❌' },
   ];
 
   return (
@@ -33,19 +35,17 @@ export default function Home() {
 
         {/* Tab Navigation */}
         <div className="mt-8 mb-6">
-          <div className="flex gap-1 p-1 glass rounded-xl w-fit">
+          <div className="flex gap-1 p-1 bg-white/5 border border-white/8 rounded-xl w-fit flex-wrap">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`
-                  flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200
-                  ${
-                    activeTab === tab.id
-                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
-                      : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-                  }
-                `}
+                className={[
+                  'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+                  activeTab === tab.id
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5',
+                ].join(' ')}
               >
                 <span>{tab.icon}</span>
                 {tab.label}
@@ -55,14 +55,23 @@ export default function Home() {
         </div>
 
         {/* Tab Panels */}
-        <div className="fade-in">
+        <div className="fade-in" key={activeTab}>
           {activeTab === 'schedule' && (
             <ScheduleForm onSuccess={handleEmailScheduled} />
+          )}
+          {activeTab === 'all' && (
+            <EmailTable
+              key={`all-${refreshKey}`}
+              status={undefined}
+              title="📋 All Emails"
+              onRefresh={() => setRefreshKey((k) => k + 1)}
+            />
           )}
           {activeTab === 'scheduled' && (
             <EmailTable
               key={`scheduled-${refreshKey}`}
               status="scheduled"
+              title="⏰ Scheduled Emails"
               onRefresh={() => setRefreshKey((k) => k + 1)}
             />
           )}
@@ -70,6 +79,15 @@ export default function Home() {
             <EmailTable
               key={`sent-${refreshKey}`}
               status="sent"
+              title="✅ Sent Emails"
+              onRefresh={() => setRefreshKey((k) => k + 1)}
+            />
+          )}
+          {activeTab === 'failed' && (
+            <EmailTable
+              key={`failed-${refreshKey}`}
+              status="failed"
+              title="❌ Failed Emails"
               onRefresh={() => setRefreshKey((k) => k + 1)}
             />
           )}

@@ -8,12 +8,21 @@ import {
 } from '../services/email.service';
 import { getQueueStats } from '../queues/emailQueue';
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUUID(id: string): boolean {
+  return UUID_REGEX.test(id);
+}
+
 // ─── Validation schemas ───────────────────────────────────────────────────────
 
 const scheduleEmailSchema = z.object({
   to: z.string().email('Invalid recipient email address'),
   subject: z.string().min(1, 'Subject is required').max(500),
-  body: z.string().min(1, 'Body is required'),
+  body: z.string().min(1, 'Body is required').max(100_000),
   scheduledAt: z.string().refine((v) => !isNaN(Date.parse(v)), {
     message: 'scheduledAt must be a valid ISO 8601 date string',
   }),
@@ -34,6 +43,7 @@ export async function scheduleEmail(
     const parsed = scheduleEmailSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
+        success: false,
         error: 'Validation failed',
         details: parsed.error.flatten().fieldErrors,
       });
@@ -42,7 +52,10 @@ export async function scheduleEmail(
 
     const scheduledAt = new Date(parsed.data.scheduledAt);
     if (scheduledAt <= new Date()) {
-      res.status(400).json({ error: 'scheduledAt must be a future date/time' });
+      res.status(400).json({
+        success: false,
+        error: 'scheduledAt must be a future date/time',
+      });
       return;
     }
 
@@ -56,6 +69,7 @@ export async function scheduleEmail(
 /**
  * GET /api/emails
  * List all emails (optionally filtered by ?status=scheduled|sent|failed|cancelled)
+ * Supports ?page=1&limit=20 pagination
  */
 export async function listEmails(
   req: Request,
@@ -63,15 +77,29 @@ export async function listEmails(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { status } = req.query;
+    const { status, page, limit } = req.query;
     const validStatuses = ['scheduled', 'sent', 'failed', 'cancelled'];
     const statusFilter =
       typeof status === 'string' && validStatuses.includes(status)
         ? status
         : undefined;
 
-    const emails = await getEmails(statusFilter);
-    res.json({ success: true, data: emails, count: emails.length });
+    const pageNum = Math.max(1, parseInt(String(page || '1')));
+    const limitNum = Math.min(100, Math.max(1, parseInt(String(limit || '50'))));
+    const offset = (pageNum - 1) * limitNum;
+
+    const { emails, total } = await getEmails(statusFilter, limitNum, offset);
+
+    res.json({
+      success: true,
+      data: emails,
+      meta: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum),
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -87,9 +115,14 @@ export async function getEmail(
   next: NextFunction
 ): Promise<void> {
   try {
+    if (!isValidUUID(req.params.id)) {
+      res.status(400).json({ success: false, error: 'Invalid email ID format' });
+      return;
+    }
+
     const email = await getEmailById(req.params.id);
     if (!email) {
-      res.status(404).json({ error: 'Email not found' });
+      res.status(404).json({ success: false, error: 'Email not found' });
       return;
     }
     res.json({ success: true, data: email });
@@ -108,15 +141,24 @@ export async function deleteEmail(
   next: NextFunction
 ): Promise<void> {
   try {
-    const email = await cancelEmail(req.params.id);
-    if (!email) {
-      res.status(404).json({ error: 'Email not found' });
+    if (!isValidUUID(req.params.id)) {
+      res.status(400).json({ success: false, error: 'Invalid email ID format' });
       return;
     }
-    res.json({ success: true, data: email, message: 'Email cancelled successfully' });
+
+    const email = await cancelEmail(req.params.id);
+    if (!email) {
+      res.status(404).json({ success: false, error: 'Email not found' });
+      return;
+    }
+    res.json({
+      success: true,
+      data: email,
+      message: 'Email cancelled successfully',
+    });
   } catch (err: unknown) {
     if (err instanceof Error && err.message.startsWith('Cannot cancel')) {
-      res.status(409).json({ error: err.message });
+      res.status(409).json({ success: false, error: err.message });
       return;
     }
     next(err);

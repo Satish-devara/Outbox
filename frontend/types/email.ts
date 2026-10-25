@@ -28,10 +28,17 @@ export interface QueueStats {
   failed: number;
 }
 
+export interface PaginationMeta {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data: T;
-  count?: number;
+  meta?: PaginationMeta;
   message?: string;
   error?: string;
 }

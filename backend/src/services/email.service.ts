@@ -39,16 +39,37 @@ export async function createScheduledEmail(dto: CreateEmailDto): Promise<Email> 
 }
 
 /**
- * Returns all emails ordered by scheduled time, optionally filtered by status.
+ * Returns paginated emails, optionally filtered by status.
  */
-export async function getEmails(status?: string): Promise<Email[]> {
-  if (status) {
-    return query<Email>(
-      `SELECT * FROM emails WHERE status = $1 ORDER BY scheduled_at DESC`,
-      [status]
-    );
-  }
-  return query<Email>(`SELECT * FROM emails ORDER BY scheduled_at DESC`);
+export async function getEmails(
+  status?: string,
+  limit = 50,
+  offset = 0
+): Promise<{ emails: Email[]; total: number }> {
+  const whereClause = status ? `WHERE status = $1` : '';
+  const params = status
+    ? [status, limit, offset]
+    : [limit, offset];
+
+  const countParam = status ? '$1' : '';
+  const countQuery = status
+    ? `SELECT COUNT(*) AS total FROM emails WHERE status = $1`
+    : `SELECT COUNT(*) AS total FROM emails`;
+
+  const countParams = status ? [status] : [];
+  const dataQuery = status
+    ? `SELECT * FROM emails WHERE status = $1 ORDER BY scheduled_at DESC LIMIT $2 OFFSET $3`
+    : `SELECT * FROM emails ORDER BY scheduled_at DESC LIMIT $1 OFFSET $2`;
+
+  const [countRows, emailRows] = await Promise.all([
+    query<{ total: string }>(countQuery, countParams),
+    query<Email>(dataQuery, params),
+  ]);
+
+  return {
+    emails: emailRows,
+    total: parseInt(countRows[0]?.total || '0', 10),
+  };
 }
 
 /**

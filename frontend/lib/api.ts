@@ -9,7 +9,7 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<ApiResp
   });
 
   const json: ApiResponse<T> = await res.json();
-  if (!res.ok) throw new Error(json.error || 'API request failed');
+  if (!res.ok) throw new Error(json.error || `Request failed: ${res.status}`);
   return json;
 }
 
@@ -20,8 +20,13 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  getEmails: (status?: string) =>
-    fetchApi<Email[]>(`/emails${status ? `?status=${status}` : ''}`),
+  getEmails: (status?: string, page = 1, limit = 50) => {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    params.set('page', String(page));
+    params.set('limit', String(limit));
+    return fetchApi<Email[]>(`/emails?${params.toString()}`);
+  },
 
   getEmail: (id: string) =>
     fetchApi<Email>(`/emails/${id}`),
